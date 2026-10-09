@@ -1,0 +1,6 @@
+{
+  "name": "Maya",
+  "description": "JARVIS-style futuristic AI assistant with Hindi voice, device control, web search, and reminders.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
