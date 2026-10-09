@@ -1,0 +1,79 @@
+name: Build Debug APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17' # Safe default for modern Android projects
+
+      - name: Locate Android Project
+        id: locate-project
+        run: |
+          echo "Searching for gradlew in the repository..."
+          GRADLEW_PATH=$(find . -name "gradlew" -type f | head -n 1)
+
+          if [ -z "$GRADLEW_PATH" ]; then
+            echo "::error::Could not find gradlew wrapper. The Android project appears to be missing."
+            exit 1
+          fi
+
+          PROJECT_ROOT=$(dirname "$GRADLEW_PATH")
+          echo "Found Android project at: $PROJECT_ROOT"
+          echo "project_root=$PROJECT_ROOT" >> $GITHUB_OUTPUT
+
+      - name: Make gradlew executable
+        run: chmod +x ${{ steps.locate-project.outputs.project_root }}/gradlew
+
+      - name: Clean up caches
+        run: |
+          echo "Cleaning up local project caches to prevent corrupted builds..."
+          rm -rf ${{ steps.locate-project.outputs.project_root }}/.gradle
+          find ${{ steps.locate-project.outputs.project_root }} -name "build" -type d -prune -exec rm -rf {} +
+
+      - name: Build Debug APK
+        run: |
+          cd ${{ steps.locate-project.outputs.project_root }}
+          echo "Building debug APK..."
+          ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Locate and copy generated APK
+        id: locate-apk
+        run: |
+          echo "Searching for generated APKs..."
+          # Create a directory to hold the APKs we want to upload
+          mkdir -p apk_output
+
+          # Find all APK files in the project root's build directories
+          find ${{ steps.locate-project.outputs.project_root }} -name "*.apk" -type f -exec cp {} apk_output/ \;
+
+          APK_COUNT=$(ls -1 apk_output/*.apk 2>/dev/null | wc -l)
+
+          if [ "$APK_COUNT" -eq 0 ]; then
+             echo "::error::Build succeeded but no APK file was found in the output directories."
+             exit 1
+          fi
+
+          echo "Found $APK_COUNT APK(s). They have been staged for upload."
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-app-debug-apk
+          path: apk_output/*.apk
+          retention-days: 14
+          if-no-files-found: error
